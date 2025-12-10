@@ -133,6 +133,12 @@
             <!-- Historial -->
             <div class="feature-card" style="margin-top: 2rem;">
                 <h2>Historial de Consultas</h2>
+                <div style="margin-top: 0.75rem; display:flex; gap:0.5rem; align-items:center;">
+                    <input type="file" id="referencesFile" accept=".txt" />
+                    <button type="button" onclick="processReferencesFile()" class="btn-outline">Procesar .txt</button>
+                    <button type="button" onclick="downloadAllQueries()" class="btn-secondary">Descargar historial (JSON)</button>
+                </div>
+
                 <div id="queriesList" style="margin-top: 1.5rem;">
                     <p style="color: var(--gray);">Cargando...</p>
                 </div>
@@ -207,17 +213,114 @@
                 }
 
                 listDiv.innerHTML = queries.map(q => `
-                    <div style="padding: 1rem; border-bottom: 1px solid var(--light-gray);">
-                        <strong>${q.referencia_catastral}</strong>
-                        <br>
-                        <small style="color: var(--gray);">
-                            ${new Date(q.created_at).toLocaleString('es-ES')}
-                        </small>
+                    <div style="padding: 1rem; border-bottom: 1px solid var(--light-gray); display:flex; justify-content:space-between; align-items:center; gap:1rem;">
+                        <div>
+                            <strong>${q.referencia_catastral}</strong>
+                            <br>
+                            <small style="color: var(--gray);">
+                                ${new Date(q.created_at).toLocaleString('es-ES')}
+                            </small>
+                        </div>
+                        <div style="display:flex; gap:0.5rem;">
+                            <button type="button" onclick="downloadQuery('${q.id}')" class="btn-outline">Descargar</button>
+                            <a href="#" onclick="openQueryDetails('${q.id}'); return false;" class="btn-link">Detalles</a>
+                        </div>
                     </div>
                 `).join('');
             } catch (error) {
                 console.error('Error loading queries:', error);
             }
+        }
+
+        // Descargar una consulta como JSON (oligatorio: existe endpoint GET /api/catastro/queries/{id})
+        async function downloadQuery(queryId) {
+            try {
+                const resp = await fetchWithAuth(`/api/catastro/queries/${queryId}`);
+                if (!resp.ok) {
+                    alert('No se pudo obtener la consulta');
+                    return;
+                }
+                const data = await resp.json();
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${data.referencia_catastral || queryId}.json`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                console.error('Error downloading query:', err);
+                alert('Error al descargar la consulta');
+            }
+        }
+
+        // Descargar todo el historial como JSON
+        async function downloadAllQueries() {
+            try {
+                const resp = await fetchWithAuth('/api/catastro/queries');
+                if (!resp.ok) {
+                    alert('No se pudo obtener el historial');
+                    return;
+                }
+                const data = await resp.json();
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `catastro_queries_${new Date().toISOString().slice(0,10)}.json`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                console.error('Error downloading all queries:', err);
+                alert('Error al descargar el historial');
+            }
+        }
+
+        // Procesar un archivo .txt con referencias (una por línea)
+        async function processReferencesFile() {
+            const input = document.getElementById('referencesFile');
+            if (!input.files || input.files.length === 0) {
+                alert('Selecciona un archivo .txt con referencias (una por línea)');
+                return;
+            }
+
+            const file = input.files[0];
+            const text = await file.text();
+            const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+            if (lines.length === 0) {
+                alert('El archivo no contiene referencias válidas');
+                return;
+            }
+
+            if (!confirm(`Se procesarán ${lines.length} referencias. ¿Continuar?`)) return;
+
+            const results = { success: 0, failed: 0 };
+
+            for (let i = 0; i < lines.length; i++) {
+                const ref = lines[i];
+                try {
+                    const resp = await fetchWithAuth('/api/catastro/query', {
+                        method: 'POST',
+                        body: JSON.stringify({ referencia_catastral: ref })
+                    });
+                    if (resp.ok) results.success++; else results.failed++;
+                } catch (err) {
+                    results.failed++;
+                }
+            }
+
+            alert(`Procesado terminado. Éxitos: ${results.success}, Fallos: ${results.failed}`);
+            loadUserData();
+            loadQueries();
+            input.value = '';
+        }
+
+        function openQueryDetails(id) {
+            window.location.href = `/static/query.html?id=${id}`;
         }
 
         // Procesar nueva consulta

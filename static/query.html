@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consulta - Catastro SaaS</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+    <div class="container" style="padding:2rem;">
+        <h1>Detalle de Consulta</h1>
+        <div id="content">Cargando...</div>
+        <p><a href="/static/dashboard.html">Volver al Dashboard</a></p>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('access_token');
+        if (!token) window.location.href = '/static/login.html';
+
+        async function fetchWithAuth(url, options = {}) {
+            const headers = {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+            const resp = await fetch(url, { ...options, headers });
+            if (resp.status === 401) {
+                localStorage.removeItem('access_token');
+                window.location.href = '/static/login.html';
+            }
+            return resp;
+        }
+
+        function getQueryId() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('id');
+        }
+
+        async function load() {
+            const id = getQueryId();
+            const el = document.getElementById('content');
+            if (!id) {
+                el.textContent = 'ID de consulta no proporcionado.';
+                return;
+            }
+            try {
+                const resp = await fetchWithAuth(`/api/catastro/queries/${id}`);
+                if (!resp.ok) {
+                    el.textContent = 'No se encontró la consulta.';
+                    return;
+                }
+                const data = await resp.json();
+                el.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (err) {
+                el.textContent = 'Error cargando la consulta.';
+            }
+        }
+
+        load();
+    </script>
+</body>
+</html>

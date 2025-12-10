@@ -70,6 +70,7 @@ class SubscriptionCreate(BaseModel):
 # Query Schemas
 class QueryCreate(BaseModel):
     referencia_catastral: str
+    kml_content: Optional[str] = None  # KML en formato string o base64
 
 
 class QueryResponse(BaseModel):
@@ -78,6 +79,7 @@ class QueryResponse(BaseModel):
     has_climate_data: bool
     has_socioeconomic_data: bool
     has_pdf: bool
+    has_wms_maps: bool
     created_at: datetime
     
     class Config:

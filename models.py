@@ -89,6 +89,11 @@ class Query(Base):
     has_climate_data = Column(Boolean, default=False)
     has_socioeconomic_data = Column(Boolean, default=False)
     has_pdf = Column(Boolean, default=False)
+    has_wms_maps = Column(Boolean, default=False)  # Mapas WMS descargados
+    
+    # KML y datos espaciales
+    kml_content = Column(String, nullable=True)  # Contenido KML en base64 o JSON
+    wms_affection_data = Column(String, nullable=True)  # JSON con resultados de afección (MontesPublicos, RedNatura2000, ViasPecuarias)
     
     # Metadata
     created_at = Column(DateTime(timezone=True), server_default=func.now())
