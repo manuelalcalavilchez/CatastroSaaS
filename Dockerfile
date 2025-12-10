@@ -1,4 +1,4 @@
-FROM python:3.14-slim
+FROM python:3.11-slim
 
 # Instalar dependencias del sistema necesarias para psycopg (driver PostgreSQL)
 RUN apt-get update && apt-get install -y \
@@ -19,5 +19,5 @@ COPY . .
 # Exponer puerto
 EXPOSE 8001
 
-# Comando de arranque para EasyPanel
+# Comando de arranque para Easypanel
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8001"]
