@@ -8,8 +8,7 @@ from config import settings
 # Asegurar que la URL usa el driver psycopg
 DATABASE_URL = settings.DATABASE_URL.replace(
     "postgresql://",
-    "postgresql+psycopg://"
-)
+    "postgresql://")
 
 # Crear engine
 engine = create_engine(
