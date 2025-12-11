@@ -85,15 +85,18 @@ class Query(Base):
     user_id = Column(String, ForeignKey("users.id"))
     referencia_catastral = Column(String, nullable=False)
     
-    # Datos generados
+    # Datos generados - WMS y afecciones
     has_climate_data = Column(Boolean, default=False)
     has_socioeconomic_data = Column(Boolean, default=False)
     has_pdf = Column(Boolean, default=False)
-    has_wms_maps = Column(Boolean, default=False)  # Mapas WMS descargados
+    has_wms_maps = Column(Boolean, default=False)
+    has_urbanismo = Column(Boolean, default=False)  # Análisis de planeamiento
     
     # KML y datos espaciales
-    kml_content = Column(String, nullable=True)  # Contenido KML en base64 o JSON
-    wms_affection_data = Column(String, nullable=True)  # JSON con resultados de afección (MontesPublicos, RedNatura2000, ViasPecuarias)
+    kml_content = Column(String, nullable=True)
+    geojson_content = Column(String, nullable=True)  # GeoJSON para urbanismo
+    wms_affection_data = Column(String, nullable=True)
+    urbanismo_data = Column(String, nullable=True)  # JSON con datos de planeamiento urbano
     
     # Metadata
     created_at = Column(DateTime(timezone=True), server_default=func.now())

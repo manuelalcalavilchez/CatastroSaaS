@@ -71,6 +71,7 @@ class SubscriptionCreate(BaseModel):
 class QueryCreate(BaseModel):
     referencia_catastral: str
     kml_content: Optional[str] = None  # KML en formato string o base64
+    geojson_content: Optional[str] = None  # GeoJSON para análisis urbano
 
 
 class QueryResponse(BaseModel):
@@ -80,6 +81,7 @@ class QueryResponse(BaseModel):
     has_socioeconomic_data: bool
     has_pdf: bool
     has_wms_maps: bool
+    has_urbanismo: bool
     created_at: datetime
     
     class Config:

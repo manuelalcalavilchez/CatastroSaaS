@@ -240,6 +240,47 @@ def _create_pdf_bytes(query):
             except Exception:
                 pass
 
+        # Datos de planeamiento urbano si están disponibles
+        if query.urbanismo_data:
+            try:
+                urbanismo_data = json.loads(query.urbanismo_data)
+                elems.append(PageBreak())
+                elems.append(Paragraph('Análisis de Planeamiento Urbano', h2))
+                
+                if "area_total_m2" in urbanismo_data:
+                    elems.append(Paragraph(f'Área total: {urbanismo_data["area_total_m2"]:.2f} m²', normal))
+                    elems.append(Spacer(1, 6))
+                
+                if "porcentajes" in urbanismo_data and urbanismo_data["porcentajes"]:
+                    porcentajes = urbanismo_data["porcentajes"]
+                    
+                    # Si es lista de dicts (nuevo formato)
+                    if isinstance(porcentajes, list) and len(porcentajes) > 0 and isinstance(porcentajes[0], dict):
+                        urbanismo_table_data = [['Clase de Suelo', 'Área (m²)', 'Porcentaje']]
+                        for item in porcentajes:
+                            tipo = item.get('tipo_suelo', 'Desconocido')
+                            area = item.get('area_m2', 0)
+                            pct = item.get('porcentaje', 0)
+                            urbanismo_table_data.append([tipo, f'{area:.2f}', f'{pct}%'])
+                    else:
+                        urbanismo_table_data = [['Clase de Suelo', 'Porcentaje']]
+                        for tipo, pct in porcentajes.items():
+                            urbanismo_table_data.append([tipo, f'{pct}%'])
+                    
+                    urb_table = Table(urbanismo_table_data, colWidths=[80 * mm, 70 * mm] if len(urbanismo_table_data[0]) == 2 else [60 * mm, 60 * mm, 50 * mm])
+                    urb_table.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0e8f8')),
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
+                        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                    ]))
+                    elems.append(urb_table)
+                    elems.append(Spacer(1, 8))
+            except Exception:
+                pass
+
         # Metadatos JSON (preformatted)
         elems.append(Paragraph('Metadatos (detallado)', h2))
         meta = {
@@ -354,6 +395,31 @@ def _create_zip_for_queries(queries):
             if q.has_socioeconomic_data:
                 z.writestr(f"{folder}/INE_socioeconomic_data.txt", "Datos socioeconómicos INE (por implementar en procesamiento real)")
 
+            # Datos de urbanismo: incluir resumen JSON y, si es posible, imágenes (ortofoto, urbanismo, leyenda, mapa compuesto)
+            if q.has_urbanismo:
+                # Incluir el JSON resumen si existe
+                if q.urbanismo_data:
+                    z.writestr(f"{folder}/urbanismo.json", q.urbanismo_data)
+
+                # Intentar regenerar imágenes de urbanismo a partir del GeoJSON guardado
+                try:
+                    if q.geojson_content:
+                        from services.urbanismo_service import procesar_consulta_urbanismo
+                        resultados_urb = procesar_consulta_urbanismo(q.geojson_content, q.referencia_catastral)
+                        imgs = resultados_urb.get('imagenes', {}) or {}
+                        urb_folder = f"{folder}/urbanismo_images"
+                        if imgs.get('ortofoto'):
+                            z.writestr(f"{urb_folder}/ortofoto.jpg", imgs.get('ortofoto'))
+                        if imgs.get('urbanismo'):
+                            z.writestr(f"{urb_folder}/urbanismo.png", imgs.get('urbanismo'))
+                        if imgs.get('leyenda'):
+                            z.writestr(f"{urb_folder}/leyenda.png", imgs.get('leyenda'))
+                        if imgs.get('mapa_compuesto'):
+                            z.writestr(f"{urb_folder}/mapa_compuesto.png", imgs.get('mapa_compuesto'))
+                except Exception:
+                    # No queremos que la generación de imágenes rompa la descarga del ZIP
+                    pass
+
             # Nota informativa
             z.writestr(f"{folder}/README.txt", 
                 f"""Consulta Catastral - {q.referencia_catastral}
@@ -454,4 +520,63 @@ async def process_query_with_wms(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing WMS: {str(e)}")
+
+
+@router.post("/query/{query_id}/process-urbanismo")
+async def process_query_with_urbanismo(
+    query_id: str,
+    current_user: models.User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Procesa una consulta existente: obtiene GeoJSON, descarga datos WFS de planeamiento urbano,
+    calcula intersecciones y genera mapas con ortofoto + urbanismo.
+    Requiere que la consulta tenga contenido GeoJSON.
+    """
+    try:
+        from services.urbanismo_service import procesar_consulta_urbanismo
+        
+        query = db.query(models.Query).filter(
+            models.Query.id == query_id,
+            models.Query.user_id == current_user.id
+        ).first()
+        
+        if not query:
+            raise HTTPException(status_code=404, detail="Query not found")
+        
+        if not query.geojson_content:
+            raise HTTPException(status_code=400, detail="Query does not contain GeoJSON content")
+        
+        # Procesar: parsear GeoJSON, descargar WFS, calcular intersecciones
+        resultados = procesar_consulta_urbanismo(
+            query.geojson_content,
+            query.referencia_catastral
+        )
+        
+        # Actualizar query con resultados
+        query.has_urbanismo = True
+        
+        # Guardar datos de planeamiento (porcentajes y áreas)
+        urbanismo_resumen = {
+            "area_total_m2": resultados.get("area_total_m2", 0),
+            "porcentajes": resultados.get("porcentajes", {}),
+            "errores": {k: v for k, v in resultados.items() if k.endswith("_error")}
+        }
+        query.urbanismo_data = json.dumps(urbanismo_resumen, default=str, ensure_ascii=False)
+        
+        db.commit()
+        db.refresh(query)
+        
+        return {
+            "status": "success",
+            "query_id": query.id,
+            "referencia": query.referencia_catastral,
+            "area_total_m2": resultados.get("area_total_m2"),
+            "clases_suelo_encontradas": len(resultados.get("porcentajes", [])),
+            "has_urbanismo": True
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing urbanismo: {str(e)}")
 
