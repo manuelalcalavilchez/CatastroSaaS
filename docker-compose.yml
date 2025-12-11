@@ -1,27 +1,39 @@
 version: "3.9"
 
 services:
-  api:
-    build: .
-    container_name: catastro_api
-    ports:
-      - "8001:8001"
-    env_file:
-      - .env
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: catastrosaas_app
+    restart: always
     depends_on:
       - db
+    env_file:
+      - .env
+    environment:
+      GUNICORN_WORKERS: 3
+    ports:
+      - "8001:8001"
+    networks:
+      - catastrosaas_net
 
   db:
     image: postgres:15
-    container_name: postgres_catastro
+    container_name: catastrosaas_db
+    restart: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-      POSTGRES_DB: ${POSTGRES_DB:-catastro_saas}
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - catastrosaas_pgdata:/var/lib/postgresql/data
+    networks:
+      - catastrosaas_net
+
+networks:
+  catastrosaas_net:
 
 volumes:
-  postgres_data:
+  catastrosaas_pgdata:
